@@ -1,24 +1,26 @@
 from os import path
-# This constant controls the size of the font relative to the image's longest side.
-# A smaller number will result in a LARGER font.
-# A larger number will result in a SMALLER font.
-FONT_WIDTH_RATIO = 35
 
-# This is the smallest font size we will allow, to ensure readability on small images.
+# --- Image Font Settings ---
+FONT_WIDTH_RATIO = 35
 MIN_FONT_SIZE = 40
 
-# --- Folder Paths ---
-# The folder containing your original images.
-SOURCE_IMAGE_FOLDER = path.join('img','input')
+# --- Video Font Settings (NEW) ---
+# A smaller number makes the text BIGGER. This is the main setting to adjust.
+VIDEO_FONT_SCALE_RATIO = 900
+# A smaller number makes the text THICKER.
+VIDEO_FONT_THICKNESS_RATIO = 350
+# Minimum values to ensure readability on small videos.
+MIN_VIDEO_FONT_SCALE = 1.0
+MIN_VIDEO_FONT_THICKNESS = 2
+MAX_PHOTOGRAMS_PER_BATCH = 250
 
-# The folder where the timestamped images will be saved.
-# This will be created inside your SOURCE_IMAGE_FOLDER.
-OUTPUT_FOLDER_NAME = path.join('img','timestamped_images')
-# --- CONFIGURATION ---
-# This should be the folder containing your timestamped PNGs.
+# --- Folder Paths ---
+SOURCE_IMAGE_FOLDER = path.join('img', 'input')
+OUTPUT_FOLDER_NAME = path.join('img', 'timestamped_images')
+
+# --- Document Creator Paths ---
 IMAGE_FOLDER = OUTPUT_FOLDER_NAME
-# This is the full path to your metadata JSON file.
 METADATA_JSON_FILE = path.join(IMAGE_FOLDER, 'metadata_report.json')
-# The name of the final Word document that will be created.
 OUTPUT_DOCX_FILE = 'Photo_Album.docx'
-PEOPLE_TO_ADD = "Jose Andres and Axel" 
+PEOPLE_TO_ADD = "Jose Andres and Axel"
+

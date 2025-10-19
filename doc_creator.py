@@ -1,13 +1,14 @@
 """
 This script reads the output from the image processing workflow:
 1. The 'metadata_report.json' file.
-2. The folder of timestamped images.
+2. The folder of timestamped images and videos.
 
-It then generates a Microsoft Word document (.docx) with one page per image,
-containing the image itself and its corresponding metadata.
+It then generates a Microsoft Word document (.docx) with one page per media file,
+containing the image/video frame and its corresponding metadata.
 """
 import os
 import json
+import cv2  # OpenCV is needed to read video frames
 from PIL import Image
 from docx import Document
 from docx.shared import Inches, Pt
@@ -28,13 +29,38 @@ def load_metadata_from_json(json_path):
     print(f"Successfully loaded metadata for {len(data)} photos.")
     return data
 
+def extract_frame_from_video(video_path, output_image_path):
+    """
+    Extracts the middle frame from a video and saves it as a temporary image file.
+    Returns True on success, False on failure.
+    """
+    try:
+        cap = cv2.VideoCapture(video_path)  # pylint: disable=no-member
+        if not cap.isOpened():
+            print(f"Error: Could not open video file {video_path}")
+            return False
+        
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))  # pylint: disable=no-member
+        middle_frame_index = total_frames // 2
+        
+        cap.set(cv2.CAP_PROP_POS_FRAMES, middle_frame_index)  # pylint: disable=no-member
+        ret, frame = cap.read()
+        cap.release()
+        
+        if ret:
+            cv2.imwrite(output_image_path, frame)  # pylint: disable=no-member
+            return True
+        return False
+    except Exception as e:
+        print(f"An error occurred while extracting frame: {e}")
+        return False
 
-def create_word_document(image_folder, metadata_dict, people_in_photo):
+def create_word_document(media_folder, metadata_dict, people_in_photo):
     """
-    Creates a Word document from images and their metadata with specific formatting.
+    Creates a Word document from images and video frames with your specific formatting.
     """
-    if not os.path.isdir(image_folder):
-        print(f"Error: Image folder not found at '{image_folder}'")
+    if not os.path.isdir(media_folder):
+        print(f"Error: Media folder not found at '{media_folder}'")
         return
 
     print("Creating Word document...")
@@ -46,89 +72,94 @@ def create_word_document(image_folder, metadata_dict, people_in_photo):
     font.size = Pt(11)
 
     for processed_filename, metadata in metadata_dict.items():
-        image_path = os.path.join(image_folder, processed_filename)
+        media_path = os.path.join(media_folder, processed_filename)
         
-        if not os.path.exists(image_path):
-            print(f"Warning: Image '{processed_filename}' not in folder. Skipping.")
+        if not os.path.exists(media_path):
+            print(f"Warning: Media file '{processed_filename}' not in folder. Skipping.")
             continue
 
-        print(f"Adding '{processed_filename}' to document...")
+        print(f"Adding '{metadata.get('OriginalFileName', '')}' to document...")
 
-        # --- Update People Field (if necessary) ---
+        original_filename = metadata.get('OriginalFileName', processed_filename)
+        is_video = original_filename.lower().endswith(('.mov', '.mp4'))
+        path_for_doc = None
+        temp_frame_path = None
+
+        if is_video:
+            temp_frame_path = os.path.join(media_folder, f"_temp_frame_{processed_filename}.png")
+            if extract_frame_from_video(media_path, temp_frame_path):
+                path_for_doc = temp_frame_path
+            else:
+                print(f"Could not extract a frame from video '{processed_filename}'. Skipping.")
+                continue
+        else:
+            path_for_doc = media_path
+
         if metadata.get('People') == "NULL" and people_in_photo:
             metadata['People'] = people_in_photo
 
-        original_filename = metadata.get('OriginalFileName', processed_filename)
-        heading = document.add_heading(original_filename, level=2)
+        heading_text = original_filename
+        if is_video:
+            heading_text += " (Video Frame)"
+        heading = document.add_heading(heading_text, level=2)
         heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        # --- Smart Image Sizing and Centering ---
-        with Image.open(image_path) as img:
+        with Image.open(path_for_doc) as img:
             width_px, height_px = img.size
 
         if width_px > height_px:  # Landscape
-            document.add_picture(image_path, width=Inches(7.0))
+            document.add_picture(path_for_doc, width=Inches(7.0))
         else:  # Portrait or square
-            document.add_picture(image_path, height=Inches(5.7))
+            document.add_picture(path_for_doc, height=Inches(5.7))
         
         last_paragraph = document.paragraphs[-1]
         last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        document.add_paragraph() 
+        document.add_paragraph()
+        
+        # ==================== MODIFICATION START ====================
+        # This new, simplified loop correctly processes all metadata fields.
+        
+        # A mapping of technical keys to their user-friendly names.
+        pretty_names = {
+            'GPS_Location': 'GPS Location',
+            'Location_Address': 'Location Address',
+            'DeviceMake': 'Device Make',
+            'DeviceModel': 'Device Model',
+            'FocalLength': 'Focal Length',
+            'ShutterSpeed': 'Shutter Speed'
+        }
+
         for key, value in metadata.items():
-            # Skip the 'Comments' key here because it's handled separately below
-            # as the 'Description' field. This prevents duplication.
-            field_name=""
-            field_content=""
-            if key == 'Comments':
+            # Skip fields that are handled manually or not needed in this list
+            if key in ['Comments']:
                 continue
-            elif key == 'GPS_Location':
-                field_name="GPS Location"
-            elif key == 'OriginalFileName':
-                field_name="Original File Name"
-            elif key == 'Location_Address':
-                field_name="Location Address"
-            elif key == 'DeviceMake':
-                field_name="Device Make"
-            elif key == 'DeviceModel':
-                field_name="DeviceModel"
-            elif key == 'FocalLength':
-                field_name="Focal Length"
-            elif key == 'ShutterSpeed':
-                field_name="Shutter Speed"
-            else:
-                field_name=key
-#         "OriginalFileName": "20220710_041555.jpg",
-    #     "Timestamp": "2022-07-10 04:15:55",
-    #     "People": "NULL",
-    #     "Location_Address": "Vorterix, Avenida Federico Lacroze, Colegiales, Buenos Aires, Distrito Audiovisual, Comuna 13, Autonomous City of Buenos Aires, C1427CCG, Argentina",
-    #     "GPS_Location": "-34.5801, -58.4509",
-    #     "DeviceMake": "samsung",
-    #     "DeviceModel": "SM-S908E",
-    #     "Dimensions": "4000x2252",
-    #     "FocalLength": "6mm",
-    #     "Aperture": "f/1.8",
-    #     "ShutterSpeed": "1/25s",
-    #     "ISO": 1000,
-    #     "Flash": "No Flash",
-    #     "Comments": "Us togheter in our bachelor's party."
-    # },
-            field_content = value[0].upper() + value[1:] if isinstance(value, str) else value
+
+            # Use the pretty name if available, otherwise use the key as-is
+            field_name = pretty_names.get(key, key)
+            
+            # Your custom capitalization logic
+            field_content = value[0].upper() + value[1:] if isinstance(value, str) and value else value
+
+            # Add the formatted metadata line to the document
             p = document.add_paragraph()
             p.add_run(f'{field_name}: ').bold = True
             p.add_run(str(field_content))
             p.paragraph_format.space_after = Pt(0)
+        # ===================== MODIFICATION END =====================
 
-        # --- Add Description Field, populated from Comments ---
         p = document.add_paragraph()
         p.add_run('Description: ').bold = True
         p.paragraph_format.space_after = Pt(0)
         
         comments = metadata.get('Comments')
-        if comments and comments != "NULL":
+        if comments and comments != "NULL" and comments != "N/A":
             p.add_run(comments)
         
         document.add_page_break()
+
+        if temp_frame_path and os.path.exists(temp_frame_path):
+            os.remove(temp_frame_path)
 
     try:
         document.save(OUTPUT_DOCX_FILE)
@@ -136,7 +167,6 @@ def create_word_document(image_folder, metadata_dict, people_in_photo):
     except Exception as e:
         print(f"Error saving document: {e}")
 
-# --- SCRIPT EXECUTION ---
 if __name__ == "__main__":
     if not PEOPLE_TO_ADD:
         print("Error: Please edit the script and set the 'PEOPLE_TO_ADD' variable before running.")
@@ -144,6 +174,4 @@ if __name__ == "__main__":
         loaded_data = load_metadata_from_json(METADATA_JSON_FILE)
         if loaded_data:
             create_word_document(IMAGE_FOLDER, loaded_data, PEOPLE_TO_ADD)
-
-
 
